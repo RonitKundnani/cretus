@@ -1,0 +1,133 @@
+@import "tailwindcss";
+
+/* ==========================================================================
+   CRETUS design tokens — "nature meets technology"
+   Derived from the club logo: near-black base, circuit-green accent,
+   forest-green secondary.
+   ========================================================================== */
+:root {
+  --background: #070b07;
+  --surface: #0c120c;
+  --surface-2: #111a11;
+  --foreground: #e8f5ea;
+  --muted: #8aa890;
+
+  --primary: #39e63a; /* circuit green */
+  --primary-dim: #23b02c;
+  --forest: #1b7a2f;
+  --forest-deep: #0b3d1a;
+
+  --border: rgba(94, 200, 110, 0.14);
+  --border-strong: rgba(94, 200, 110, 0.3);
+  --glow: rgba(57, 230, 58, 0.45);
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-surface: var(--surface);
+  --color-surface-2: var(--surface-2);
+  --color-foreground: var(--foreground);
+  --color-muted: var(--muted);
+  --color-primary: var(--primary);
+  --color-primary-dim: var(--primary-dim);
+  --color-forest: var(--forest);
+  --color-forest-deep: var(--forest-deep);
+  --color-border: var(--border);
+
+  --font-display: var(--font-space-grotesk);
+  --font-sans: var(--font-inter);
+  --font-mono: var(--font-jetbrains);
+}
+
+* {
+  border-color: var(--border);
+}
+
+/* NOTE: no `scroll-behavior: smooth` here on purpose — Lenis (see
+   components/smooth-scroll.tsx) drives smooth scrolling in JS, and the CSS
+   property fights it and breaks Next.js route transitions. */
+
+body {
+  background: var(--background);
+  color: var(--foreground);
+  font-family: var(--font-sans), system-ui, sans-serif;
+  -webkit-font-smoothing: antialiased;
+  overflow-x: hidden;
+}
+
+/* subtle circuit-grid backdrop, sits behind everything */
+.circuit-bg {
+  background-image:
+    linear-gradient(var(--border) 1px, transparent 1px),
+    linear-gradient(90deg, var(--border) 1px, transparent 1px);
+  background-size: 44px 44px;
+  -webkit-mask-image: radial-gradient(ellipse 80% 60% at 50% 0%, #000 40%, transparent 100%);
+  mask-image: radial-gradient(ellipse 80% 60% at 50% 0%, #000 40%, transparent 100%);
+}
+
+/* headings use the display face */
+h1, h2, h3, h4, .font-display {
+  font-family: var(--font-display), system-ui, sans-serif;
+  letter-spacing: -0.02em;
+}
+
+/* glowing green text accent */
+.text-glow {
+  color: var(--primary);
+  text-shadow: 0 0 18px var(--glow);
+}
+
+/* gradient text (forest -> circuit green) */
+.text-gradient {
+  background: linear-gradient(120deg, #7bffa0 0%, var(--primary) 45%, var(--forest) 100%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+
+/* glass card with green edge */
+.card-glass {
+  background: color-mix(in srgb, var(--surface) 85%, transparent);
+  border: 1px solid var(--border);
+  backdrop-filter: blur(10px);
+  transition: border-color 0.3s ease, transform 0.3s ease;
+}
+.card-glass:hover {
+  border-color: var(--border-strong);
+}
+
+/* keyframes ------------------------------------------------------------- */
+@keyframes float {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-10px); }
+}
+@keyframes pulse-glow {
+  0%, 100% { opacity: 0.6; filter: drop-shadow(0 0 6px var(--glow)); }
+  50% { opacity: 1; filter: drop-shadow(0 0 16px var(--glow)); }
+}
+.animate-float { animation: float 6s ease-in-out infinite; }
+.animate-pulse-glow { animation: pulse-glow 3s ease-in-out infinite; }
+
+/* thin, tech-styled scrollbar */
+::-webkit-scrollbar { width: 10px; height: 10px; }
+::-webkit-scrollbar-track { background: var(--background); }
+::-webkit-scrollbar-thumb {
+  background: var(--forest-deep);
+  border-radius: 6px;
+  border: 2px solid var(--background);
+}
+::-webkit-scrollbar-thumb:hover { background: var(--forest); }
+
+::selection {
+  background: var(--primary);
+  color: #04180a;
+}
+
+/* honor reduced motion everywhere */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+  }
+}

@@ -1,0 +1,127 @@
+@import "tailwindcss";
+
+/* ==========================================================================
+   CRETUS Inventory — same identity as the public site, dashboard-tuned.
+   ========================================================================== */
+:root {
+  --background: #070b07;
+  --surface: #0c120c;
+  --surface-2: #111a11;
+  --foreground: #e8f5ea;
+  --muted: #8aa890;
+
+  --primary: #39e63a;
+  --primary-dim: #23b02c;
+  --forest: #1b7a2f;
+  --forest-deep: #0b3d1a;
+
+  --border: rgba(94, 200, 110, 0.14);
+  --border-strong: rgba(94, 200, 110, 0.3);
+  --glow: rgba(57, 230, 58, 0.4);
+
+  --danger: #f87171;
+  --warn: #fbbf24;
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-surface: var(--surface);
+  --color-surface-2: var(--surface-2);
+  --color-foreground: var(--foreground);
+  --color-muted: var(--muted);
+  --color-primary: var(--primary);
+  --color-primary-dim: var(--primary-dim);
+  --color-forest: var(--forest);
+  --color-forest-deep: var(--forest-deep);
+  --color-border: var(--border);
+  --color-danger: var(--danger);
+  --color-warn: var(--warn);
+
+  --font-display: var(--font-space-grotesk);
+  --font-sans: var(--font-inter);
+  --font-mono: var(--font-jetbrains);
+}
+
+* {
+  border-color: var(--border);
+}
+
+body {
+  background: var(--background);
+  color: var(--foreground);
+  font-family: var(--font-sans), system-ui, sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
+
+h1, h2, h3, h4 {
+  font-family: var(--font-display), system-ui, sans-serif;
+  letter-spacing: -0.02em;
+}
+
+.card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 1rem;
+}
+
+/* form controls */
+.input {
+  width: 100%;
+  border-radius: 0.75rem;
+  border: 1px solid var(--border);
+  background: var(--surface-2);
+  padding: 0.6rem 0.85rem;
+  font-size: 0.875rem;
+  outline: none;
+  transition: border-color 0.2s;
+}
+.input:focus {
+  border-color: var(--border-strong);
+}
+.input::placeholder {
+  color: color-mix(in srgb, var(--muted) 70%, transparent);
+}
+.label {
+  display: block;
+  margin-bottom: 0.35rem;
+  font-size: 0.72rem;
+  font-weight: 500;
+  color: var(--muted);
+}
+
+.btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  border-radius: 9999px;
+  padding: 0.6rem 1.25rem;
+  font-size: 0.85rem;
+  font-weight: 600;
+  transition: box-shadow 0.2s, background 0.2s, border-color 0.2s;
+  cursor: pointer;
+}
+.btn-primary {
+  background: var(--primary);
+  color: #04180a;
+}
+.btn-primary:hover {
+  box-shadow: 0 0 22px var(--glow);
+}
+.btn-ghost {
+  border: 1px solid var(--border);
+  color: var(--foreground);
+}
+.btn-ghost:hover {
+  border-color: var(--border-strong);
+  color: var(--primary);
+}
+
+::selection { background: var(--primary); color: #04180a; }
+
+::-webkit-scrollbar { width: 10px; height: 10px; }
+::-webkit-scrollbar-track { background: var(--background); }
+::-webkit-scrollbar-thumb {
+  background: var(--forest-deep);
+  border-radius: 6px;
+  border: 2px solid var(--background);
+}
