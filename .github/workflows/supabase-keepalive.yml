@@ -1,0 +1,57 @@
+# Keeps the free-tier Supabase project from auto-pausing.
+# Supabase pauses free projects after 7 days without activity, so this pings
+# the REST API (a real DB read) every 3 days.
+#
+# GitHub also disables scheduled workflows after 60 days with no repo activity.
+# The last step re-enables this workflow through the API, which resets that timer.
+#
+# Required repo secrets (Settings > Secrets and variables > Actions):
+#   SUPABASE_URL       e.g. https://<project-ref>.supabase.co
+#   SUPABASE_ANON_KEY  the publishable (sb_publishable_...) key
+
+name: Supabase keepalive
+
+on:
+  schedule:
+    - cron: "17 6 */3 * *"
+  workflow_dispatch:
+
+permissions:
+  actions: write
+  contents: read
+
+jobs:
+  ping:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Query database
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
+        run: |
+          if [ -z "$SUPABASE_URL" ] || [ -z "$SUPABASE_ANON_KEY" ]; then
+            echo "::error::SUPABASE_URL or SUPABASE_ANON_KEY secret is missing"
+            exit 1
+          fi
+          # Retry: a sleeping project can return 5xx on the first request.
+          for attempt in 1 2 3 4 5; do
+            status=$(curl -s -o response.json -w "%{http_code}" \
+              "$SUPABASE_URL/rest/v1/committee_members?select=id&limit=1" \
+              -H "apikey: $SUPABASE_ANON_KEY" \
+              -H "Authorization: Bearer $SUPABASE_ANON_KEY")
+            echo "Attempt $attempt: HTTP $status"
+            if [ "$status" = "200" ]; then
+              cat response.json; echo
+              exit 0
+            fi
+            sleep $((attempt * 15))
+          done
+          echo "::error::Supabase did not respond with 200. The project may be paused; restore it from the dashboard."
+          cat response.json
+          exit 1
+
+      - name: Keep this workflow enabled
+        if: always()
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh api -X PUT "repos/${{ github.repository }}/actions/workflows/supabase-keepalive.yml/enable"
