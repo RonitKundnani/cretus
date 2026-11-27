@@ -23,7 +23,7 @@ concurrency:
 jobs:
   ping:
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 15
     steps:
       - name: Query Supabase and recover from a pause
         shell: bash
@@ -67,12 +67,12 @@ jobs:
             exit 0
           fi
 
-          if [[ "$curl_exit" != 6 && "$http_status" != 540 ]]; then
+          if [[ "$curl_exit" != 6 && "$http_status" != 540 && "$http_status" != 521 ]]; then
             fail "Database check failed (HTTP $http_status, curl exit $curl_exit). Verify the project key and table access."
           fi
 
           if [[ -z "$SUPABASE_MANAGEMENT_TOKEN" ]]; then
-            fail "The project is paused (HTTP 540) or its hostname did not resolve (curl 6). Check the URL and resume a paused project at https://supabase.com/dashboard/project/$project_ref, or set SUPABASE_MANAGEMENT_TOKEN for automatic recovery."
+            fail "The Supabase Data API is unavailable. Check the URL and resume a paused project at https://supabase.com/dashboard/project/$project_ref, or set SUPABASE_MANAGEMENT_TOKEN for automatic recovery."
           fi
 
           management=("${request[@]}" --fail --header "Authorization: Bearer $SUPABASE_MANAGEMENT_TOKEN")
@@ -88,6 +88,7 @@ jobs:
               if ! "${management[@]}" --request POST --output /dev/null "$project_api/restore"; then
                 fail "Restore request failed. Check the token's project_admin_write permission, available project slots, and the Supabase dashboard."
               fi
+              echo "Supabase accepted the restore request. Waiting for the Data API."
               ;;
             RESTORING|COMING_UP)
               echo "Supabase reports the project is $project_status. Waiting for the Data API."
@@ -97,20 +98,21 @@ jobs:
               ;;
           esac
 
-          for attempt in {1..12}; do
+          # The gateway can return 404 or 521 before the restored API is ready.
+          for attempt in {1..18}; do
             sleep 20
             if probe; then
               echo "The Supabase database is reachable again."
               exit 0
             fi
             case "$http_status" in
-              401|403|404)
+              401|403)
                 fail "The Data API returned HTTP $http_status. Verify the project key and table access."
                 ;;
             esac
           done
 
-          fail "The database is still unreachable after requesting or waiting for a restore. Check the Supabase dashboard."
+          fail "The database is still unreachable after waiting for a restore (HTTP $http_status, curl exit $curl_exit). Check the Supabase dashboard."
 
       - name: Keep this workflow enabled
         if: always()
