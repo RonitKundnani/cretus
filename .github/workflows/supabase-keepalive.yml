@@ -1,57 +1,119 @@
-# Keeps the free-tier Supabase project from auto-pausing.
-# Supabase pauses free projects after 7 days without activity, so this pings
-# the REST API (a real DB read) every 3 days.
-#
-# GitHub also disables scheduled workflows after 60 days with no repo activity.
-# The last step re-enables this workflow through the API, which resets that timer.
-#
-# Required repo secrets (Settings > Secrets and variables > Actions):
-#   SUPABASE_URL       e.g. https://<project-ref>.supabase.co
-#   SUPABASE_ANON_KEY  the publishable (sb_publishable_...) key
+# Required repository secrets: SUPABASE_URL (https://<project-ref>.supabase.co)
+# and SUPABASE_ANON_KEY (publishable key or legacy anon key).
+# Optional SUPABASE_MANAGEMENT_TOKEN: a separate Supabase access token scoped
+# to this project with project_admin_read and project_admin_write. If enabled,
+# the workflow can resume an inactive project, including one paused manually.
 
 name: Supabase keepalive
 
 on:
   schedule:
-    - cron: "17 6 */3 * *"
+    - cron: '17 6,14,22 * * *'
   workflow_dispatch:
+  push:
+    branches: [main]
+    paths: [.github/workflows/supabase-keepalive.yml]
 
 permissions:
   actions: write
-  contents: read
+
+concurrency:
+  group: supabase-keepalive
 
 jobs:
   ping:
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
-      - name: Query database
+      - name: Query Supabase and recover from a pause
+        shell: bash
         env:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
+          SUPABASE_MANAGEMENT_TOKEN: ${{ secrets.SUPABASE_MANAGEMENT_TOKEN }}
         run: |
-          if [ -z "$SUPABASE_URL" ] || [ -z "$SUPABASE_ANON_KEY" ]; then
-            echo "::error::SUPABASE_URL or SUPABASE_ANON_KEY secret is missing"
+          fail() {
+            echo "::error::$1"
             exit 1
+          }
+
+          project_url=${SUPABASE_URL%/}
+          if [[ ! "$project_url" =~ ^https://([a-z0-9]{20})\.supabase\.co$ ]]; then
+            fail "Set SUPABASE_URL to the standard Supabase project URL (https://<project-ref>.supabase.co)."
           fi
-          # Retry: a sleeping project can return 5xx on the first request.
-          for attempt in 1 2 3 4 5; do
-            status=$(curl -s -o response.json -w "%{http_code}" \
-              "$SUPABASE_URL/rest/v1/committee_members?select=id&limit=1" \
-              -H "apikey: $SUPABASE_ANON_KEY" \
-              -H "Authorization: Bearer $SUPABASE_ANON_KEY")
-            echo "Attempt $attempt: HTTP $status"
-            if [ "$status" = "200" ]; then
-              cat response.json; echo
+          project_ref=${BASH_REMATCH[1]}
+          [[ -n "$SUPABASE_ANON_KEY" ]] || fail "Set the SUPABASE_ANON_KEY repository secret."
+
+          request=(curl --silent --show-error --connect-timeout 5 --max-time 15)
+          headers=(--header "apikey: $SUPABASE_ANON_KEY")
+          if [[ "$SUPABASE_ANON_KEY" == eyJ* ]]; then
+            headers+=(--header "Authorization: Bearer $SUPABASE_ANON_KEY")
+          fi
+
+          probe() {
+            curl_exit=0
+            if http_status=$("${request[@]}" "$@" --output /dev/null --write-out '%{http_code}' \
+              "${headers[@]}" "$project_url/rest/v1/committee_members?select=id&limit=1"); then
+              echo "Supabase Data API returned HTTP $http_status."
+              [[ "$http_status" == 200 ]]
+            else
+              curl_exit=$?
+              echo "Supabase Data API request failed with curl exit code $curl_exit."
+              return 1
+            fi
+          }
+
+          if probe --retry 2 --retry-delay 3 --retry-max-time 35; then
+            exit 0
+          fi
+
+          if [[ "$curl_exit" != 6 && "$http_status" != 540 ]]; then
+            fail "Database check failed (HTTP $http_status, curl exit $curl_exit). Verify the project key and table access."
+          fi
+
+          if [[ -z "$SUPABASE_MANAGEMENT_TOKEN" ]]; then
+            fail "The project is paused (HTTP 540) or its hostname did not resolve (curl 6). Check the URL and resume a paused project at https://supabase.com/dashboard/project/$project_ref, or set SUPABASE_MANAGEMENT_TOKEN for automatic recovery."
+          fi
+
+          management=("${request[@]}" --fail --header "Authorization: Bearer $SUPABASE_MANAGEMENT_TOKEN")
+          project_api="https://api.supabase.com/v1/projects/$project_ref"
+
+          if ! project_status=$("${management[@]}" "$project_api" | jq -er '.status | select(test("^[A-Z_]+$"))'); then
+            fail "Could not check project status. Verify the project URL and token's project_admin_read permission."
+          fi
+
+          case "$project_status" in
+            INACTIVE)
+              echo "Supabase reports the project is inactive. Requesting a restore."
+              if ! "${management[@]}" --request POST --output /dev/null "$project_api/restore"; then
+                fail "Restore request failed. Check the token's project_admin_write permission, available project slots, and the Supabase dashboard."
+              fi
+              ;;
+            RESTORING|COMING_UP)
+              echo "Supabase reports the project is $project_status. Waiting for the Data API."
+              ;;
+            *)
+              fail "Supabase reports $project_status. Check the Supabase dashboard and Data API hostname."
+              ;;
+          esac
+
+          for attempt in {1..12}; do
+            sleep 20
+            if probe; then
+              echo "The Supabase database is reachable again."
               exit 0
             fi
-            sleep $((attempt * 15))
+            case "$http_status" in
+              401|403|404)
+                fail "The Data API returned HTTP $http_status. Verify the project key and table access."
+                ;;
+            esac
           done
-          echo "::error::Supabase did not respond with 200. The project may be paused; restore it from the dashboard."
-          cat response.json
-          exit 1
+
+          fail "The database is still unreachable after requesting or waiting for a restore. Check the Supabase dashboard."
 
       - name: Keep this workflow enabled
         if: always()
         env:
           GH_TOKEN: ${{ github.token }}
-        run: gh api -X PUT "repos/${{ github.repository }}/actions/workflows/supabase-keepalive.yml/enable"
+        run: gh api -X PUT "repos/$GITHUB_REPOSITORY/actions/workflows/supabase-keepalive.yml/enable"
